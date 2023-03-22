@@ -1,93 +1,64 @@
 # Clickhouse Cluster
 
-Clickhouse cluster with 2 shards and 2 replicas built with docker-compose.
-
-Not for production use.
-
-## Run
-
-Run single command, and it will copy configs for each node and
-run clickhouse cluster `company_cluster` with docker-compose
-```sh
+```bash
 make config up
+````
+
+```bash
+echo "INSERT INTO db_test.replicated_table VALUES ('replicated', '2000-01-01')" | curl -H 'Transfer-Encoding: chunked' 'http://127.0.0.1:8123/' --data-binary @- -vvv
+*   Trying 127.0.0.1...
+* TCP_NODELAY set
+* Connected to 127.0.0.1 (127.0.0.1) port 8123 (#0)
+> POST / HTTP/1.1
+> Host: 127.0.0.1:8123
+> User-Agent: curl/7.64.1
+> Accept: */*
+> Transfer-Encoding: chunked
+> Content-Type: application/x-www-form-urlencoded
+> 
+> 49
+* upload completely sent off: 80 out of 73 bytes
+< HTTP/1.1 200 OK
+< Date: Wed, 22 Mar 2023 13:16:21 GMT
+< Connection: Keep-Alive
+< Content-Type: text/plain; charset=UTF-8
+< X-ClickHouse-Server-Display-Name: clickhouse01
+< Transfer-Encoding: chunked
+< Keep-Alive: timeout=3
+< X-ClickHouse-Summary: {"read_rows":"1","read_bytes":"21","written_rows":"1","written_bytes":"21","total_rows_to_read":"0","result_rows":"1","result_bytes":"21"}
+< 
+* Connection #0 to host 127.0.0.1 left intact
+* Closing connection 0
+
+
+
+echo "INSERT INTO db_test.simple_table VALUES ('simple', '2000-01-01')" | curl -H 'Transfer-Encoding: chunked' 'http://127.0.0.1:8123/' --data-binary @- -vvv
+*   Trying 127.0.0.1...
+* TCP_NODELAY set
+* Connected to 127.0.0.1 (127.0.0.1) port 8123 (#0)
+> POST / HTTP/1.1
+> Host: 127.0.0.1:8123
+> User-Agent: curl/7.64.1
+> Accept: */*
+> Transfer-Encoding: chunked
+> Content-Type: application/x-www-form-urlencoded
+> 
+> 41
+* upload completely sent off: 72 out of 65 bytes
+< HTTP/1.1 200 OK
+< Date: Wed, 22 Mar 2023 13:16:32 GMT
+< Connection: Keep-Alive
+< Content-Type: text/plain; charset=UTF-8
+< X-ClickHouse-Server-Display-Name: clickhouse01
+< Transfer-Encoding: chunked
+< Keep-Alive: timeout=3
+< X-ClickHouse-Summary: {"read_rows":"1","read_bytes":"17","written_rows":"1","written_bytes":"17","total_rows_to_read":"0","result_rows":"1","result_bytes":"17"}
+< 
+* Connection #0 to host 127.0.0.1 left intact
+* Closing connection 0
 ```
 
-Containers will be available in docker network `172.23.0.0/24`
-
-| Container    | Address
-| ------------ | -------
-| zookeeper    | 172.23.0.10
-| clickhouse01 | 172.23.0.11
-| clickhouse02 | 172.23.0.12
-| clickhouse03 | 172.23.0.13
-| clickhouse04 | 172.23.0.14
-
-## Profiles
-
-- `default` - no password
-- `admin` - password `123`
-
-## Test it
-
-Login to clickhouse01 console (first node's ports are mapped to localhost)
-```sh
-clickhouse-client -h localhost
-```
-
-Or open `clickhouse-client` inside any container
-```sh
-docker exec -it clickhouse01 clickhouse-client -h localhost
-```
-
-Create a test database and table (sharded and replicated)
-```sql
-CREATE DATABASE company_db ON CLUSTER 'company_cluster';
-
-CREATE TABLE company_db.events ON CLUSTER 'company_cluster' (
-    time DateTime,
-    uid  Int64,
-    type LowCardinality(String)
-)
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{cluster}/{shard}/table', '{replica}')
-PARTITION BY toDate(time)
-ORDER BY (uid);
-
-CREATE TABLE company_db.events_distr ON CLUSTER 'company_cluster' AS company_db.events
-ENGINE = Distributed('company_cluster', company_db, events, uid);
-```
-
-Load some data
-```sql
-INSERT INTO company_db.events_distr VALUES
-    ('2020-01-01 10:00:00', 100, 'view'),
-    ('2020-01-01 10:05:00', 101, 'view'),
-    ('2020-01-01 11:00:00', 100, 'contact'),
-    ('2020-01-01 12:10:00', 101, 'view'),
-    ('2020-01-02 08:10:00', 100, 'view'),
-    ('2020-01-03 13:00:00', 103, 'view');
-```
-
-Check data from the current shard
-```sql
-SELECT * FROM company_db.events;
-```
-
-Check data from all cluster
-```sql
-SELECT * FROM company_db.events_distr;
-```
-
-## Add more nodes
-
-If you need more Clickhouse nodes, add them like this:
-
-1. Add replicas/shards to `config.xml` to the block `company/remote_servers/company_cluster`.
-1. Add nodes to `docker-compose.yml`.
-1. Add nodes in `Makefile` in `config` target.
-
-## Teardown
-
-Stop and remove containers
-```sh
-make down
+```bash
+docker logs -f clickhouse01 2>&1 | grep "Got an HTTP request with no content length"
+2023.03.22 16:13:14.067399 [ 261 ] {} <Warning> HTTPServerRequest: Got an HTTP request with no content length and no chunked/multipart encoding, it may be impossible to distinguish graceful EOF from abnormal connection loss
 ```
